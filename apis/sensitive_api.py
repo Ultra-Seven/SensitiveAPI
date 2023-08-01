@@ -3,6 +3,10 @@ import json
 
 import pandas as pd
 import requests
+# from huaweicloudsdkcore.auth.credentials import BasicCredentials
+# from huaweicloudsdkmoderation.v3.region.moderation_region import ModerationRegion
+# from huaweicloudsdkcore.exceptions import exceptions
+# from huaweicloudsdkmoderation.v3 import *
 
 
 class SensitiveApi():
@@ -10,24 +14,9 @@ class SensitiveApi():
         print("")
 
 
-class LCMX(SensitiveApi):
-    def __init__(self, path):
-        self.data = pd.read_csv(path)
-        self.url = "https://lcmx-green.mobage.cn"
-        self.path = "text/scan3rd"
-        self.header = {"Accept": "application/json",
-                       "Content-Type": "application/json; charset = utf-8"}
-        print("")
-
-    def run_apis(self):
-        for text in self.data["文本内容"]:
-            requests.post(f"{self.url}/{self.path}", data=myobj, timeout=2.50)
-            print(text)
-
-
 class BaiduApi(SensitiveApi):
-    def __init__(self, path):
-        self.data = pd.read_csv(path)
+    def __init__(self, path, topk=5000):
+        self.data = pd.read_csv(path)[:topk]
         self.access_token = self.get_access_token()
         self.url = "https://aip.baidubce.com/rest/2.0/solution/v1/text_censor/v2/user_defined?access_token=" + \
                    self.get_access_token()
@@ -36,6 +25,7 @@ class BaiduApi(SensitiveApi):
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json'
         }
+        self.name = "baidu"
 
     def get_access_token(self):
         """
@@ -49,10 +39,27 @@ class BaiduApi(SensitiveApi):
         return str(requests.post(url, params=params).json().get("access_token"))
 
     def run_apis(self):
-        for text in self.data["文本内容"]:
-            self.payload = f'text={text}'
-            response = requests.request("POST", self.url, headers=self.headers, data=self.payload.encode('utf-8'))
-            print(text)
+        with open("./results/baidu_results.csv", 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(["文本内容", "识别结果", "风险原因"])
+            for idx, text in enumerate(self.data["文本内容"]):
+                self.payload = f'text={text}'
+                response = requests.request("POST", self.url, headers=self.headers, data=self.payload.encode('utf-8'))
+                print(response.text)
+                response_dict = json.loads(response.text)
+                conclusion = response_dict["conclusion"]
+                if conclusion == "合规":
+                    csvfile.write(f"{idx},通过,NA\n")
+                    print(f"{idx},通过,NA\n")
+                else:
+                    data = response_dict["data"]
+                    reason_list = []
+                    for r in data:
+                        reason = r["msg"]
+                        reason_list.append(reason)
+                    reason_text = ";".join(reason_list)
+                    csvfile.write(f"{idx},拒绝,{reason_text}\n")
+                    print(f"{idx},拒绝,{reason_text}\n")
 
 
 class WordsCheckApi(SensitiveApi):
@@ -91,11 +98,31 @@ class WordsCheckApi(SensitiveApi):
 class HuaweiApi:
     def __init__(self, path):
         self.data = pd.read_csv(path)
-        self.url = "https://api.wordscheck.com/check"
-        self.payload = {"key": "VxqmjyBWoj76dQk8ZmJM6U15diKGoOOW", "content": "你好"}
-        self.headers = {
-            'Accept': 'application/json'
-        }
+        project_id = "3113a77e663b481bbe85e035a576e52e"
+        ak = "<YOUR AK>"
+        sk = "<YOUR SK>"
+
+        credentials = BasicCredentials(ak, sk)
+        client = ModerationClient.new_builder().with_credentials(credentials)\
+            .with_region(ModerationRegion.value_of("cn-north-4"))\
+            .build()
+
+        try:
+            request = RunTextModerationRequest()
+            databody = TextDetectionDataReq(
+                text="政治"
+            )
+            request.body = TextDetectionReq(
+                data=databody,
+                event_type="comment"
+            )
+            response = client.run_text_moderation(request)
+            print(response)
+        except exceptions.ClientRequestException as e:
+            print(e.status_code)
+            print(e.request_id)
+            print(e.error_code)
+            print(e.error_msg)
 
     def run_apis(self):
         with open("./results/words_check_results.csv", 'w') as csvfile:

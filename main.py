@@ -1,8 +1,9 @@
-from apis.sensitive_api import LCMX, BaiduApi, WordsCheckApi
+from apis.sensitive_api import BaiduApi, WordsCheckApi
 
 
 def run_apis(data_path):
-    sensitive_api = WordsCheckApi(data_path)
+    # sensitive_api = WordsCheckApi(data_path)
+    sensitive_api = BaiduApi(data_path)
     sensitive_api.run_apis()
 
 
@@ -28,7 +29,7 @@ def parse_results():
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # run_apis('data/202307_POST_TEXT_POST_TEXT_task_id_35688.csv')
-    parse_results()
+    run_apis('data/202307_POST_TEXT_POST_TEXT_task_id_35688.csv')
+    # parse_results()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
