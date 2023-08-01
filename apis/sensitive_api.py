@@ -3,13 +3,13 @@ import json
 
 import pandas as pd
 import requests
-# from huaweicloudsdkcore.auth.credentials import BasicCredentials
-# from huaweicloudsdkmoderation.v3.region.moderation_region import ModerationRegion
-# from huaweicloudsdkcore.exceptions import exceptions
-# from huaweicloudsdkmoderation.v3 import *
+from huaweicloudsdkcore.auth.credentials import BasicCredentials
+from huaweicloudsdkmoderation.v3.region.moderation_region import ModerationRegion
+from huaweicloudsdkcore.exceptions import exceptions
+from huaweicloudsdkmoderation.v3 import *
 
 
-class SensitiveApi():
+class SensitiveApi:
     def __int__(self, path):
         print("")
 
@@ -96,53 +96,48 @@ class WordsCheckApi(SensitiveApi):
 
 
 class HuaweiApi:
-    def __init__(self, path):
-        self.data = pd.read_csv(path)
-        project_id = "3113a77e663b481bbe85e035a576e52e"
-        ak = "<YOUR AK>"
-        sk = "<YOUR SK>"
+    def __init__(self, path, topk=5000):
+        self.data = pd.read_csv(path)[:topk]
+        # project_id = "3113a77e663b481bbe85e035a576e52e"
+        ak = "2KNPQIFEQLXVNJ6HUQ3J"
+        sk = "h9Gi6OvDlF5AJMa5ay0eR4oVtbZlVwyqF8zmxuOw"
 
         credentials = BasicCredentials(ak, sk)
-        client = ModerationClient.new_builder().with_credentials(credentials)\
+        self.client = ModerationClient.new_builder().with_credentials(credentials)\
             .with_region(ModerationRegion.value_of("cn-north-4"))\
             .build()
 
-        try:
-            request = RunTextModerationRequest()
-            databody = TextDetectionDataReq(
-                text="政治"
-            )
-            request.body = TextDetectionReq(
-                data=databody,
-                event_type="comment"
-            )
-            response = client.run_text_moderation(request)
-            print(response)
-        except exceptions.ClientRequestException as e:
-            print(e.status_code)
-            print(e.request_id)
-            print(e.error_code)
-            print(e.error_msg)
-
     def run_apis(self):
-        with open("./results/words_check_results.csv", 'w') as csvfile:
+        with open("./results/huawei_results.csv", 'w') as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerow(["文本内容", "识别结果", "风险原因"])
             for idx, text in enumerate(self.data["文本内容"]):
                 try:
-                    self.payload["content"] = text
-                    data = json.dumps(self.payload)
-                    response = requests.request("POST", self.url, headers=self.headers, data=data)
-                    response_dict = json.loads(response.text)
-                    word_list = response_dict["word_list"]
-                    if len(word_list) > 0:
-                        check = "拒绝"
+                    request = RunTextModerationRequest()
+                    databody = TextDetectionDataReq(
+                        text=text
+                    )
+                    request.body = TextDetectionReq(
+                        data=databody,
+                        event_type="comment"
+                    )
+                    response = self.client.run_text_moderation(request)
+                    response_dict = response.result
+                    conclusion = response_dict.suggestion
+                    if conclusion == "pass":
+                        csvfile.write(f"{idx},通过,NA\n")
+                        print(f"{idx},通过,NA")
                     else:
-                        check = "通过"
-                    reason = ";".join([word["keyword"] + ":" + word["category"]
-                                       for word in word_list])
-                    print(text, check, reason)
-                    csvwriter.writerows([str(idx), check, reason])
-                except Exception as e:
-                    csvwriter.writerows([str(idx), "ERROR", "ERROR"])
-                    print(e)
+                        data = response_dict.details
+                        reason_list = []
+                        for r in data:
+                            reason = r.label
+                            words = "-".join([t.segment for t in r.segments])
+                            reason_list.append(f"{reason}:{words}")
+                        reason_text = ";".join(reason_list)
+                        csvfile.write(f"{idx},拒绝,{reason_text}\n")
+                        print(f"{idx},拒绝,{reason_text}")
+                    print(response_dict)
+                except exceptions.ClientRequestException as e:
+                    csvfile.write(f"{idx},NA,NA\n")
+                    print(f"{idx},NA,NA\n")
