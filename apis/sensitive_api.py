@@ -216,7 +216,8 @@ class YidunApi:
                 start_idx = g_idx * 100
                 end_idx = (g_idx + 1) * 100
                 batch = texts[start_idx:end_idx]
-                for param in batch:
+                for offset, param in enumerate(batch):
+                    idx = start_idx + offset
                     ret = self.check(param)
                     code: int = ret["code"]
                     msg: str = ret["msg"]
@@ -230,12 +231,14 @@ class YidunApi:
                             csvfile.write(f"{idx},通过,NA\n")
                             print("taskId: %s, 文本机器检测结果: 通过" % taskId)
                         elif suggestion == 1:
-                            csvfile.write(f"{idx},嫌疑,NA\n")
+                            label = ";".join([str(l["label"]) for l in labelArray])
+                            csvfile.write(f"{idx},嫌疑,{label}\n")
                             print("taskId: %s, 文本机器检测结果: 嫌疑, 需人工复审, 分类信息如下: %s" % (
                             taskId, labelArray))
                         elif suggestion == 2:
-                            csvfile.write(f"{idx},拒绝,NA\n")
+                            label = ";".join([str(l["label"]) for l in labelArray])
+                            csvfile.write(f"{idx},拒绝,{label}\n")
                             print("taskId=%s, 文本机器检测结果: 不通过, 分类信息如下: %s" % (taskId, labelArray))
                     else:
                         print("ERROR: code=%s, msg=%s" % (ret["code"], ret["msg"]))
-                    time.sleep(1)
+                    # time.sleep(1)
