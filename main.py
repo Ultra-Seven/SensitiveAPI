@@ -1,10 +1,12 @@
-from apis.sensitive_api import BaiduApi, WordsCheckApi, HuaweiApi
+from apis.sensitive_api import BaiduApi, WordsCheckApi, HuaweiApi, YidunApi
 
 
 def run_apis(data_path):
     # sensitive_api = WordsCheckApi(data_path)
     # sensitive_api = BaiduApi(data_path)
-    sensitive_api = HuaweiApi(data_path)
+    # sensitive_api = HuaweiApi(data_path)
+    sensitive_api = YidunApi(data_path, "a5b11e1b9b22de6640a88f002ef2ff5a",
+                             "ed0e86ec971cb8d0e1be2152b7b06b5b", "d3894efafef52620ac77f94c8f13ebdc")
     sensitive_api.run_apis()
 
 

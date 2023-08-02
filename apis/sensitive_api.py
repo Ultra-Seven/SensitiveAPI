@@ -1,12 +1,17 @@
 import csv
 import json
-
+import hashlib
 import pandas as pd
 import requests
+import time
+import random
 from huaweicloudsdkcore.auth.credentials import BasicCredentials
 from huaweicloudsdkmoderation.v3.region.moderation_region import ModerationRegion
 from huaweicloudsdkcore.exceptions import exceptions
 from huaweicloudsdkmoderation.v3 import *
+from gmssl import sm3, func
+import urllib.request as urlrequest
+import urllib.parse as urlparse
 
 
 class SensitiveApi:
@@ -141,3 +146,96 @@ class HuaweiApi:
                 except exceptions.ClientRequestException as e:
                     csvfile.write(f"{idx},NA,NA\n")
                     print(f"{idx},NA,NA\n")
+
+class YidunApi:
+    __author__ = 'yidun-dev'
+    __date__ = '2019/11/27'
+    __version__ = '0.2-dev'
+    API_URL = "http://as.dun.163.com/v5/text/check"
+    VERSION = "v5.2"
+
+
+    def __init__(self, path, secret_id, secret_key, business_id, topk=5000):
+        self.secret_id = secret_id
+        self.secret_key = secret_key
+        self.business_id = business_id
+        self.data = pd.read_csv(path)[:topk]
+
+    def gen_signature(self, params=None):
+        """生成签名信息
+        Args:
+            params (object) 请求参数
+        Returns:
+            参数签名md5值
+        """
+        buff = ""
+        for k in sorted(params.keys()):
+            buff += str(k) + str(params[k])
+        buff += self.secret_key
+        if "signatureMethod" in params.keys() and params["signatureMethod"] == "SM3":
+            return sm3.sm3_hash(func.bytes_to_list(bytes(buff, encoding='utf8')))
+        else:
+            return hashlib.md5(buff.encode("utf8")).hexdigest()
+
+    def check(self, params):
+        """请求易盾接口
+        Args:
+            params (object) 请求参数
+        Returns:
+            请求结果，json格式
+        """
+        params["secretId"] = self.secret_id
+        params["businessId"] = self.business_id
+        params["version"] = self.VERSION
+        params["timestamp"] = int(time.time() * 1000)
+        params["nonce"] = int(random.random() * 100000000)
+        # params["signatureMethod"] = "SM3"  # 签名方法，默认MD5，支持SM3
+        params["signature"] = self.gen_signature(params)
+
+        try:
+            params = urlparse.urlencode(params).encode("utf8")
+            request = urlrequest.Request(self.API_URL, params)
+            content = urlrequest.urlopen(request, timeout=10).read()
+            return json.loads(content)
+        except Exception as ex:
+            print("调用API接口失败:", str(ex))
+
+    def run_apis(self):
+        texts: list = []
+        with open("./results/yidun_results.csv", 'w') as csvfile:
+            csvwriter = csv.writer(csvfile)
+            csvwriter.writerow(["文本内容", "识别结果", "风险原因"])
+            for idx, text in enumerate(self.data["文本内容"]):
+                text_param = {
+                    "dataId": f"{idx}",
+                    "content": text
+                }
+                texts.append(text_param)
+            nr_groups = len(texts) // 100 + 1
+            for g_idx in range(nr_groups):
+                start_idx = g_idx * 100
+                end_idx = (g_idx + 1) * 100
+                batch = texts[start_idx:end_idx]
+                for param in batch:
+                    ret = self.check(param)
+                    code: int = ret["code"]
+                    msg: str = ret["msg"]
+                    if code == 200:
+                        result: dict = ret["result"]
+                        antispam: dict = result["antispam"]
+                        taskId: str = antispam["taskId"]
+                        suggestion: int = antispam["suggestion"]
+                        labelArray: list = antispam["labels"]
+                        if suggestion == 0:
+                            csvfile.write(f"{idx},通过,NA\n")
+                            print("taskId: %s, 文本机器检测结果: 通过" % taskId)
+                        elif suggestion == 1:
+                            csvfile.write(f"{idx},嫌疑,NA\n")
+                            print("taskId: %s, 文本机器检测结果: 嫌疑, 需人工复审, 分类信息如下: %s" % (
+                            taskId, labelArray))
+                        elif suggestion == 2:
+                            csvfile.write(f"{idx},拒绝,NA\n")
+                            print("taskId=%s, 文本机器检测结果: 不通过, 分类信息如下: %s" % (taskId, labelArray))
+                    else:
+                        print("ERROR: code=%s, msg=%s" % (ret["code"], ret["msg"]))
+                    time.sleep(1)
